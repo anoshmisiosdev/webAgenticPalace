@@ -1,5 +1,16 @@
 
-import { Types, createComponent, createSystem, Entity } from "@iwsdk/core";
+import {
+  Entity,
+  LocomotionEnvironment,
+  PhysicsBody,
+  PhysicsShape,
+  PhysicsShapeType,
+  PhysicsState,
+  Types,
+  createComponent,
+  createSystem,
+} from "@iwsdk/core";
+import { EnvironmentType } from "@iwsdk/core";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -15,6 +26,8 @@ interface SplatInstance {
   splat: SplatMesh;
   collider: THREE.Group | null;
   animator: GaussianSplatAnimator | null;
+  ownsLocomotionEnvironment: boolean;
+  ownsPhysicsEnvironment: boolean;
 }
 
 
@@ -27,8 +40,8 @@ interface SplatInstance {
  * children so they inherit the entity's transform.
  */
 export const GaussianSplatLoader = createComponent("GaussianSplatLoader", {
-  splatUrl: { type: Types.String, default: "./Example/TestWorld.spz" },
-  meshUrl: { type: Types.String, default: "" },
+  splatUrl: { type: Types.String, default: "./Example/ModernSpace.spz" },
+  meshUrl: { type: Types.String, default: "./Example/ModernSpace.glb" },
   autoLoad: { type: Types.Boolean, default: true },
   animate: { type: Types.Boolean, default: false },
   enableLod: { type: Types.Boolean, default: true },
@@ -202,7 +215,22 @@ export class GaussianSplatLoaderSystem extends createSystem({
     parent.add(splat);
     if (collider) parent.add(collider);
 
-    this.instances.set(entity.index, { splat, collider, animator });
+    let ownsLocomotionEnvironment = false;
+    let ownsPhysicsEnvironment = false;
+    if (collider) {
+      this.refreshLocomotionEnvironment(entity, EnvironmentType.STATIC);
+      this.refreshPhysicsEnvironment(entity);
+      ownsLocomotionEnvironment = true;
+      ownsPhysicsEnvironment = true;
+    }
+
+    this.instances.set(entity.index, {
+      splat,
+      collider,
+      animator,
+      ownsLocomotionEnvironment,
+      ownsPhysicsEnvironment,
+    });
     console.log(
       `[GaussianSplatLoader] Loaded splat for entity ${entity.index}` +
         `${collider ? " (with collider)" : ""}`,
@@ -264,6 +292,16 @@ export class GaussianSplatLoaderSystem extends createSystem({
 
     this.animating.delete(entityIndex);
     instance.animator?.dispose();
+
+    const entity = this.world.entities[entityIndex];
+    if (instance.ownsLocomotionEnvironment && entity) {
+      entity.removeComponent(LocomotionEnvironment);
+    }
+    if (instance.ownsPhysicsEnvironment && entity) {
+      entity.removeComponent(PhysicsBody);
+      entity.removeComponent(PhysicsShape);
+    }
+
     instance.splat.parent?.remove(instance.splat);
     instance.splat.dispose();
 
@@ -285,5 +323,35 @@ export class GaussianSplatLoaderSystem extends createSystem({
     console.log(
       `[GaussianSplatLoader] Unloaded splat for entity ${entityIndex}`,
     );
+  }
+
+  private refreshLocomotionEnvironment(
+    entity: Entity,
+    type: string,
+  ): void {
+    if (entity.hasComponent(LocomotionEnvironment)) {
+      entity.removeComponent(LocomotionEnvironment);
+    }
+
+    entity.addComponent(LocomotionEnvironment, { type });
+  }
+
+  private refreshPhysicsEnvironment(entity: Entity): void {
+    if (entity.hasComponent(PhysicsBody)) {
+      entity.removeComponent(PhysicsBody);
+    }
+    if (entity.hasComponent(PhysicsShape)) {
+      entity.removeComponent(PhysicsShape);
+    }
+
+    entity
+      .addComponent(PhysicsShape, {
+        shape: PhysicsShapeType.TriMesh,
+        friction: 0.9,
+        restitution: 0.0,
+      })
+      .addComponent(PhysicsBody, {
+        state: PhysicsState.Static,
+      });
   }
 }

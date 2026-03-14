@@ -2,19 +2,23 @@
 import * as THREE from "three";
 import {
   EnvironmentType,
-  Interactable,
   LocomotionEnvironment,
   Mesh,
   MeshBasicMaterial,
-  PanelUI,
   PlaneGeometry,
-  ScreenSpace,
+  PhysicsBody,
+  PhysicsShape,
+  PhysicsShapeType,
+  PhysicsState,
   SessionMode,
   VisibilityState,
   World,
 } from "@iwsdk/core";
 import { PanelSystem } from "./uiPanel.js";
-import { GaussianSplatLoader, GaussianSplatLoaderSystem,} from "./gaussianSplatLoader.js";
+import {
+  GaussianSplatLoader,
+  GaussianSplatLoaderSystem,
+} from "./gaussianSplatLoader.js";
 import { spawnHologramSphere } from "./interactableExample.js";
 
 
@@ -34,7 +38,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   features: {
     locomotion: true,
     grabbing: true,
-    physics: false,
+    physics: true,
     sceneUnderstanding: false,
   },
 })
@@ -55,6 +59,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     splatEntity.addComponent(GaussianSplatLoader);
 
     const splatSystem = world.getSystem(GaussianSplatLoaderSystem)!;
+    const splatColliderUrl =
+      (splatEntity.getValue(GaussianSplatLoader, "meshUrl") as string) ?? "";
 
     // Play splat animation when entering XR
     world.visibilityState.subscribe((state) => {
@@ -67,15 +73,27 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
 
     
     // ------------------------------------------------------------
-    // Invisible floor for locomotion (must be a Mesh for IWSDK raycasting)
+    // Invisible floor for locomotion fallback.
+    // When `meshUrl` is set on the splat loader, the hidden collider mesh is
+    // registered as the locomotion environment instead.
     // ------------------------------------------------------------
-    const floorGeometry = new PlaneGeometry(100, 100);
-    floorGeometry.rotateX(-Math.PI / 2);
-    const floor = new Mesh(floorGeometry, new MeshBasicMaterial());
-    floor.visible = false;
-    world
-      .createTransformEntity(floor)
-      .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
+    if (!splatColliderUrl) {
+      const floorGeometry = new PlaneGeometry(100, 100);
+      floorGeometry.rotateX(-Math.PI / 2);
+      const floor = new Mesh(floorGeometry, new MeshBasicMaterial());
+      floor.visible = false;
+      world
+        .createTransformEntity(floor)
+        .addComponent(LocomotionEnvironment, {
+          type: EnvironmentType.STATIC,
+        })
+        .addComponent(PhysicsShape, {
+          shape: PhysicsShapeType.Box,
+          dimensions: [100, 0.02, 100],
+          friction: 0.9,
+        })
+        .addComponent(PhysicsBody, { state: PhysicsState.Static });
+    }
 
     const grid = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
     grid.material.transparent = true;

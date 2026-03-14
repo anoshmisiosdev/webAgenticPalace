@@ -5,6 +5,10 @@ import {
   Interactable,
   Mesh,
   MovementMode,
+  PhysicsBody,
+  PhysicsShape,
+  PhysicsShapeType,
+  PhysicsState,
   World,
 } from "@iwsdk/core";
 
@@ -79,6 +83,18 @@ export function spawnHologramSphere(
   world
     .createTransformEntity(sphere)
     .addComponent(Interactable)
+    .addComponent(PhysicsShape, {
+      shape: PhysicsShapeType.Sphere,
+      dimensions: [radius, 0, 0],
+      density: 1.0,
+      restitution: 0.15,
+      friction: 0.7,
+    })
+    .addComponent(PhysicsBody, {
+      state: PhysicsState.Dynamic,
+      linearDamping: 0.2,
+      angularDamping: 0.4,
+    })
     .addComponent(DistanceGrabbable, {
       movementMode: MovementMode.MoveAtSource,
       translate: true,
@@ -86,4 +102,3 @@ export function spawnHologramSphere(
       scale: false,
     });
 }
-
