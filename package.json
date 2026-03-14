@@ -13,8 +13,8 @@
     "vite": "^5.0.0"
   },
   "dependencies": {
-    "@mkkellogg/gaussian-splats-3d": "^0.4.0",
-    "three": "^0.158.0"
+    "@sparkjsdev/spark": "^0.1.10",
+    "three": "^0.178.0"
   },
   "keywords": [
     "webxr",
