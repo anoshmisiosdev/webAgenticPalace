@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@sparkjsdev/spark": "^0.1.10",
-    "three": "^0.178.0"
+    "three": "^0.183.2"
   },
   "keywords": [
     "webxr",
@@ -23,8 +23,5 @@
     "three.js"
   ],
   "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "@sparkjsdev/spark": "^0.1.10"
-  }
+  "license": "MIT"
 }

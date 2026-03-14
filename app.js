@@ -1,9 +1,24 @@
 import * as THREE from 'three';
 import { SplatMesh } from '@sparkjsdev/spark';
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    // Listen on all network addresses (required for external access)
+    host: '0.0.0.0', 
+    // Specify the hostnames Vite is allowed to respond to
+    allowedHosts: [
+      'webxr.riyanshomelab.com',
+      'localhost',
+    ],
+  },
+});
 
 let scene, camera, renderer;
 
 function init() {
+    
+
+
     // Create scene
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x101010);
