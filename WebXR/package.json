@@ -1,0 +1,16 @@
+{
+  "name": "webxr-base-app",
+  "version": "1.0.0",
+  "description": "A basic WebXR application",
+  "main": "index.html",
+  "scripts": {
+    "start": "http-server -p 8080 -c-1",
+    "dev": "http-server -p 8080 -c-1 --cors"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "keywords": ["webxr", "vr", "ar", "three.js"],
+  "author": "",
+  "license": "MIT"
+}
