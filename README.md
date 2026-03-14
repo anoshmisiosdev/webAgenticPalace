@@ -1,2 +1,2 @@
-# webAgenticDiddy
+# webAgenticPalace
 SensAI Hackathon
