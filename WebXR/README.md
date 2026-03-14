@@ -1,17 +1,18 @@
 # WebXR Base App
 
-A basic WebXR application using Three.js for immersive VR experiences.
+A WebXR application using Gaussian Splats 3D for rendering 3D scenes in immersive VR.
 
 ## Features
 
-- Checks for WebXR support
-- Simple VR scene with a rotating cube
-- Enter/Exit VR session
+- Loads and renders a Gaussian Splat (.spz) model
+- WebXR support for VR experiences
+- Uses Three.js for 3D rendering
 
 ## Requirements
 
 - A WebXR-compatible browser (e.g., Chrome with WebXR API enabled)
 - VR headset or compatible device
+- The TestWorld.spz file in the Example folder
 
 ## Installation
 
@@ -21,8 +22,9 @@ A basic WebXR application using Three.js for immersive VR experiences.
 
 ## Running the App
 
-1. Start the development server: `npm start`
-2. Open your browser and go to `http://localhost:8080`
+1. Start the development server: `npm run dev`
+2. Open your browser and go to the provided URL (usually `http://localhost:5173`)
+3. The app will automatically load the splat model and start the VR session if supported.
 3. Click "Enter XR" to start the VR session.
 
 ## Usage
