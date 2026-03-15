@@ -15,12 +15,30 @@ import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { GaussianSplatAnimator } from "./gaussianSplatAnimator.js";
+import { updatePins } from "./waypointManager.js";
 
 
 // ------------------------------------------------------------
 // Constants & Types
 // ------------------------------------------------------------
 const LOAD_TIMEOUT_MS = 30_000;
+
+// Distance-based lodSplatScale tiers (camera → splat center).
+// lodSplatScale is a multiplier on the platform's default splat budget.
+// Lower = fewer splats = faster; higher = more detail.
+const LOD_TIERS: Array<{ maxDist: number; scale: number }> = [
+  { maxDist: 3,   scale: 1.2 },  // close — full+ detail
+  { maxDist: 8,   scale: 1.0 },  // mid — platform default
+  { maxDist: 16,  scale: 0.7 },  // far — 30% reduction
+  { maxDist: Infinity, scale: 0.4 }, // very far — 60% reduction
+];
+
+// lodRenderScale: minimum screen-pixel size per splat.
+// 2.5 eliminates invisible micro-splats with no perceptible quality loss.
+const LOD_RENDER_SCALE = 2.5;
+
+// lodSplatScale applied when the XR session is presenting (limited GPU).
+const LOD_XR_SCALE_MULTIPLIER = 0.7;
 
 interface SplatInstance {
   splat: SplatMesh;
@@ -73,14 +91,27 @@ export class GaussianSplatLoaderSystem extends createSystem({
   // ----------------------------------------------------------
   // Initialization
   // ----------------------------------------------------------
+  // Cached camera world position for distance calculations
+  private _camPos = new THREE.Vector3();
+  // Whether XR is currently presenting (lower LOD budget in headset)
+  private _xrPresenting = false;
+
   init() {
     const spark = new SparkRenderer({
       renderer: this.world.renderer,
       enableLod: true,
       lodSplatScale: 1.0,
-      behindFoveate: 0.1,
+      // Skip splats smaller than 2.5 screen pixels — indistinguishable
+      // at normal viewing distances but eliminates a large fraction of
+      // micro-splat draw calls.
+      lodRenderScale: LOD_RENDER_SCALE,
+      // 3 parallel streaming fetchers (leaves one worker free for decoding).
+      numLodFetchers: 3,
+      // Aggressively cull splats behind the fovea center in XR.
+      behindFoveate: 0.05,
     });
-    spark.outsideFoveate = 0.3;
+    // Reduce quality 75% outside the central foveal region.
+    spark.outsideFoveate = 0.25;
     spark.renderOrder = -10;
     this.world.scene.add(spark);
     this.sparkRenderer = spark;
@@ -99,6 +130,14 @@ export class GaussianSplatLoaderSystem extends createSystem({
       c.matrixWorldInverse.copy(this.matrixWorldInverse);
       return c;
     };
+
+    // Track XR presenting state to tighten LOD budget inside the headset.
+    this.world.renderer.xr.addEventListener("sessionstart", () => {
+      this._xrPresenting = true;
+    });
+    this.world.renderer.xr.addEventListener("sessionend", () => {
+      this._xrPresenting = false;
+    });
 
     this.queries.splats.subscribe("qualify", (entity) => {
       const autoLoad = entity.getValue(
@@ -121,6 +160,38 @@ export class GaussianSplatLoaderSystem extends createSystem({
   // Frame Loop
   // ----------------------------------------------------------
   update() {
+    // --- Dynamic LOD scale based on camera distance + XR mode ---
+    if (this.sparkRenderer && this.instances.size > 0) {
+      this.world.camera.getWorldPosition(this._camPos);
+
+      // Find the closest loaded splat centre.
+      let minDist = Infinity;
+      for (const instance of this.instances.values()) {
+        const d = this._camPos.distanceTo(
+          instance.splat.getWorldPosition(new THREE.Vector3()),
+        );
+        if (d < minDist) minDist = d;
+      }
+
+      // Pick the LOD tier for that distance.
+      let scale = LOD_TIERS[LOD_TIERS.length - 1].scale;
+      for (const tier of LOD_TIERS) {
+        if (minDist <= tier.maxDist) {
+          scale = tier.scale;
+          break;
+        }
+      }
+
+      // Apply an extra reduction when rendering inside the headset.
+      if (this._xrPresenting) scale *= LOD_XR_SCALE_MULTIPLIER;
+
+      this.sparkRenderer.lodSplatScale = scale;
+    }
+
+    // --- Waypoint pin pulse + float animation ---
+    updatePins(performance.now() / 1000);
+
+    // --- Animator ticks ---
     if (this.animating.size === 0) return;
 
     for (const entityIndex of this.animating) {
@@ -293,7 +364,7 @@ export class GaussianSplatLoaderSystem extends createSystem({
     this.animating.delete(entityIndex);
     instance.animator?.dispose();
 
-    const entity = this.world.entities[entityIndex];
+    const entity = this.world.entityManager.getEntityByIndex(entityIndex);
     if (instance.ownsLocomotionEnvironment && entity) {
       entity.removeComponent(LocomotionEnvironment);
     }

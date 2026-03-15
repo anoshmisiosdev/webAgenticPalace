@@ -6,95 +6,226 @@ import {
   eq,
   VisibilityState,
   UIKitDocument,
-  UIKit,
 } from "@iwsdk/core";
+import { Container, Text } from "@pmndrs/uikit";
 import * as THREE from "three";
+import {
+  getWorldList,
+  onWorldListChange,
+  threatColor,
+  type WorldListEntry,
+} from "./worldListService.js";
 
-// Render UI on top of splats using AlwaysDepth + high renderOrder.
-// depthWrite stays true so the IWSDK laser pointer depth-tests correctly
-// against the panel surface (depthTest=false would break it).
+// -----------------------------------------------------------------------
+// Module-level state
+// -----------------------------------------------------------------------
 
-const UI_RENDER_ORDER = 10_000;
-const APPLIED_FLAG = "__uiDepthConfigApplied";
+export interface PanelCallbacks {
+  onScout: () => Promise<void>;
+  onGenerate: () => Promise<void>;
+  onVisitWorld: (entry: WorldListEntry) => Promise<void>;
+  onHome: () => void;
+  onToggleXR: () => void;
+  getXRLabel: () => string;
+}
 
-function configureUIMaterial(material: THREE.Material | null | undefined) {
-  if (!material) return;
-  material.depthTest = true;
-  material.depthWrite = true;
-  material.depthFunc = THREE.AlwaysDepth;
+let _callbacks: PanelCallbacks | null = null;
+let _worldListEl: Container | null = null;
+let _statusTextEl: Text | null = null;
+let _scoutLabelEl: Text | null = null;
+let _genLabelEl: Text | null = null;
+let _xrLabelEl: Text | null = null;
+let _activeWorldId: string | null = null;
 
-  // Use texture alpha for images (e.g. logo) so transparent pixels don’t show black
-  if (material instanceof THREE.MeshBasicMaterial && material.map) {
-    material.transparent = true;
-    material.alphaTest = 0.01;
+export function registerPanelCallbacks(cb: PanelCallbacks): void {
+  _callbacks = cb;
+}
+
+export function setPanelStatus(msg: string | null): void {
+  _statusTextEl?.setProperties({ text: msg ?? " " } as any);
+}
+
+export function setActivePanelWorld(worldId: string | null): void {
+  _activeWorldId = worldId;
+  rebuildWorldList();
+}
+
+export function setPanelButtonLabel(
+  button: "scout" | "gen" | "xr",
+  label: string,
+): void {
+  if (button === "scout") _scoutLabelEl?.setProperties({ text: label } as any);
+  if (button === "gen") _genLabelEl?.setProperties({ text: label } as any);
+  if (button === "xr") _xrLabelEl?.setProperties({ text: label } as any);
+}
+
+// -----------------------------------------------------------------------
+// World list helpers
+// -----------------------------------------------------------------------
+
+function formatAge(ts: number): string {
+  const m = Math.floor((Date.now() - ts) / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function buildWorldRow(
+  entry: WorldListEntry | null, // null = home row
+  isActive: boolean,
+  onClick: () => void,
+): Container {
+  const isHome = entry === null;
+  const label = isHome
+    ? "🏠  Host World"
+    : (entry!.label ?? entry!.summary.slice(0, 50));
+  const color = isHome ? "#9E9E9E" : threatColor(entry!.threat_level);
+  const statusSuffix =
+    !isHome && entry!.status === "generating"
+      ? "  ⏳"
+      : !isHome && entry!.status === "failed"
+        ? "  ✗"
+        : "";
+
+  const row = new Container({
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    backgroundColor: isActive
+      ? "rgba(124,58,237,0.35)"
+      : "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+    gap: 0,
+  } as any);
+
+  // Threat-color left stripe
+  const stripe = new Container({
+    width: 4,
+    alignSelf: "stretch",
+    backgroundColor: color,
+  } as any);
+  row.add(stripe);
+
+  // Content area
+  const content = new Container({
+    flex: 1,
+    flexDirection: "column",
+    padding: 10,
+    gap: 2,
+  } as any);
+
+  const nameText = new Text({
+    text: label + statusSuffix,
+    fontSize: 13,
+    color: "white",
+  } as any);
+  content.add(nameText);
+
+  if (!isHome) {
+    const meta = new Text({
+      text: `${entry!.threat_level ?? "UNKNOWN"}  ·  ${formatAge(entry!.created_at)}`,
+      fontSize: 10,
+      color: "rgba(160,160,210,1)",
+    } as any);
+    content.add(meta);
+  }
+
+  row.add(content);
+
+  // Active dot
+  if (isActive) {
+    const dot = new Container({
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: "rgba(200,160,255,1)",
+      marginRight: 10,
+    } as any);
+    row.add(dot);
+  }
+
+  row.addEventListener("click", onClick);
+  return row;
+}
+
+function rebuildWorldList(): void {
+  if (!_worldListEl) return;
+  const toRemove = [..._worldListEl.children];
+  toRemove.forEach((c) => _worldListEl!.remove(c));
+
+  // Home row
+  _worldListEl.add(
+    buildWorldRow(null, _activeWorldId === null, () => _callbacks?.onHome()),
+  );
+
+  // Generated world rows
+  const worlds = getWorldList();
+  for (const entry of worlds) {
+    _worldListEl.add(
+      buildWorldRow(
+        entry,
+        entry.id === _activeWorldId,
+        () => void _callbacks?.onVisitWorld(entry),
+      ),
+    );
   }
 }
 
-function applyRenderOrderToObject(object3D: THREE.Object3D) {
-  object3D.traverse((obj) => {
-    obj.renderOrder = UI_RENDER_ORDER;
+// -----------------------------------------------------------------------
+// Depth-override: force UI to render on top of Gaussian Splats
+// -----------------------------------------------------------------------
 
+const APPLIED_FLAG = "__uiDepthApplied";
+
+function configureUIMaterial(m: THREE.Material | null | undefined): void {
+  if (!m) return;
+  m.depthTest = true;
+  m.depthWrite = true;
+  m.depthFunc = THREE.AlwaysDepth;
+  if (m instanceof THREE.MeshBasicMaterial && m.map) {
+    m.transparent = true;
+    m.alphaTest = 0.01;
+  }
+}
+
+function applyRenderOrder(obj3d: THREE.Object3D): void {
+  obj3d.traverse((obj) => {
+    obj.renderOrder = 10_000;
     if (obj instanceof THREE.Mesh) {
       if (obj.userData[APPLIED_FLAG]) return;
       obj.userData[APPLIED_FLAG] = true;
-
       if (Array.isArray(obj.material)) {
-        obj.material.forEach((m) => configureUIMaterial(m));
+        obj.material.forEach(configureUIMaterial);
       } else {
         configureUIMaterial(obj.material);
       }
-
-      // Re-apply every render in case IWSDK replaces materials
-      const originalOnBeforeRender = obj.onBeforeRender;
-      obj.onBeforeRender = function (
-        renderer,
-        scene,
-        camera,
-        geometry,
-        material,
-        group,
-      ) {
+      const orig = obj.onBeforeRender;
+      obj.onBeforeRender = function (r, s, c, g, material, group) {
         configureUIMaterial(material as THREE.Material);
-        if (typeof originalOnBeforeRender === "function") {
-          originalOnBeforeRender.call(
-            this,
-            renderer,
-            scene,
-            camera,
-            geometry,
-            material,
-            group,
-          );
-        }
+        if (typeof orig === "function")
+          orig.call(this, r, s, c, g, material, group);
       };
     }
   });
 }
 
-/**
- * Force an entity's UI meshes to render on top of Gaussian Splats.
- * Retries for up to 10 frames since IWSDK may not have built the
- * panel meshes yet at qualify time.
- */
 export function makeEntityRenderOnTop(entity: Entity): void {
   let attempts = 0;
-
-  const tryApply = () => {
+  const try_ = () => {
     if (entity.object3D) {
-      applyRenderOrderToObject(entity.object3D);
+      applyRenderOrder(entity.object3D);
       return;
     }
-    if (++attempts < 10) {
-      requestAnimationFrame(tryApply);
-    } else {
-      console.warn(
-        `[Panel] makeEntityRenderOnTop: entity ${entity.index} had no object3D after 10 frames.`,
-      );
-    }
+    if (++attempts < 10) requestAnimationFrame(try_);
   };
-
-  tryApply();
+  try_();
 }
+
+// -----------------------------------------------------------------------
+// PanelSystem
+// -----------------------------------------------------------------------
 
 export class PanelSystem extends createSystem({
   sensaiPanel: {
@@ -103,33 +234,87 @@ export class PanelSystem extends createSystem({
   },
 }) {
   init() {
-    // replayExisting: true so we run setup for entities that already qualified
-    // (e.g. when PanelDocument loads before or in the same tick as init).
-    this.queries.sensaiPanel.subscribe("qualify", (entity) => {
-      makeEntityRenderOnTop(entity);
+    // Rebuild list whenever worldListService notifies us
+    onWorldListChange(() => rebuildWorldList());
 
-      const document = PanelDocument.data.document[
-        entity.index
-      ] as UIKitDocument;
-      if (!document) return;
+    this.queries.sensaiPanel.subscribe(
+      "qualify",
+      (entity) => {
+        makeEntityRenderOnTop(entity);
 
-      const xrButton = document.getElementById("xr-button") as UIKit.Text;
-      xrButton.addEventListener("click", () => {
-        if (this.world.visibilityState.value === VisibilityState.NonImmersive) {
-          this.world.launchXR();
-        } else {
-          this.world.exitXR();
+        const doc = PanelDocument.data.document[
+          entity.index
+        ] as UIKitDocument;
+        if (!doc) return;
+
+        // --- Status bar ---
+        const statusBarEl = doc.getElementById("status-bar") as Container | null;
+        if (statusBarEl) {
+          _statusTextEl = new Text({
+            text: " ",
+            fontSize: 12,
+            color: "rgba(180,180,255,1)",
+            textAlign: "center",
+            flex: 1,
+          } as any);
+          statusBarEl.add(_statusTextEl);
         }
-      });
 
-      this.world.visibilityState.subscribe((visibilityState) => {
-        xrButton.setProperties({
-          text:
-            visibilityState === VisibilityState.NonImmersive
-              ? "Enter XR"
-              : "Exit to Browser",
-        });
-      });
-    }, true);
+        // --- Scout button ---
+        const scoutBtnEl = doc.getElementById("scout-btn") as Container | null;
+        if (scoutBtnEl) {
+          _scoutLabelEl = new Text({
+            text: "🎤  Scout Mission",
+            fontSize: 13,
+            fontWeight: "bold",
+            color: "white",
+            textAlign: "center",
+          } as any);
+          scoutBtnEl.add(_scoutLabelEl);
+          scoutBtnEl.addEventListener("click", () => void _callbacks?.onScout());
+        }
+
+        // --- Generate button ---
+        const genBtnEl = doc.getElementById("gen-btn") as Container | null;
+        if (genBtnEl) {
+          _genLabelEl = new Text({
+            text: "🌍  New World",
+            fontSize: 13,
+            fontWeight: "bold",
+            color: "white",
+            textAlign: "center",
+          } as any);
+          genBtnEl.add(_genLabelEl);
+          genBtnEl.addEventListener("click", () => void _callbacks?.onGenerate());
+        }
+
+        // --- World list ---
+        _worldListEl = doc.getElementById("world-list") as Container | null;
+        rebuildWorldList();
+
+        // --- XR button ---
+        const xrBtnEl = doc.getElementById("xr-button") as Container | null;
+        if (xrBtnEl) {
+          _xrLabelEl = new Text({
+            text: _callbacks?.getXRLabel() ?? "Enter XR",
+            fontSize: 13,
+            fontWeight: "bold",
+            color: "rgba(180,200,255,1)",
+            textAlign: "center",
+          } as any);
+          xrBtnEl.add(_xrLabelEl);
+          xrBtnEl.addEventListener("click", () => _callbacks?.onToggleXR());
+          this.world.visibilityState.subscribe((state) => {
+            _xrLabelEl?.setProperties({
+              text:
+                state === VisibilityState.NonImmersive
+                  ? "Enter XR"
+                  : "Exit to Browser",
+            } as any);
+          });
+        }
+      },
+      true,
+    );
   }
 }
