@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.spz
+public/worlds/*.spz
+.DS_Store
+Thumbs.db

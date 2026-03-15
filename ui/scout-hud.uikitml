@@ -1,0 +1,156 @@
+<style>
+  .hud-container {
+    align-items: flex-start;
+    padding: 2;
+    width: 55;
+    display: flex;
+    flex-direction: column;
+    background-color: rgba(0, 10, 30, 0.92);
+    border-color: #00c8f0;
+    border-width: 0.12;
+    border-radius: 2;
+  }
+
+  .title-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 1;
+  }
+
+  .title {
+    font-size: 4;
+    font-weight: bold;
+    color: #00c8f0;
+    letter-spacing: 0.4;
+  }
+
+  .threat-badge {
+    font-size: 1.8;
+    font-weight: bold;
+    color: #00ff88;
+    padding: 0.4 1;
+    border-color: #00ff88;
+    border-width: 0.08;
+    border-radius: 1;
+    margin-left: 2;
+  }
+
+  .status-text {
+    font-size: 2;
+    color: #aaaaaa;
+    margin-bottom: 1.5;
+  }
+
+  .section-label {
+    font-size: 1.5;
+    font-weight: bold;
+    color: #00c8f0;
+    letter-spacing: 0.3;
+    margin-top: 1;
+    margin-bottom: 0.5;
+  }
+
+  .narration-text {
+    font-size: 2;
+    color: #dddddd;
+    margin-bottom: 1.5;
+    padding: 1;
+    border-color: #00c8f0;
+    border-width: 0 0 0 0.15;
+  }
+
+  .mission-input {
+    width: 100%;
+    padding: 1.2;
+    background-color: rgba(0, 30, 60, 0.8);
+    border-color: #334455;
+    border-width: 0.08;
+    border-radius: 1;
+    color: #ffffff;
+    font-size: 2;
+    margin-bottom: 1;
+  }
+
+  .btn-row {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    gap: 1;
+  }
+
+  #scout-btn {
+    flex: 1;
+    padding: 1.2;
+    background-color: #00c8f0;
+    color: #000000;
+    border-radius: 1;
+    border-width: 0;
+    font-size: 2.2;
+    font-weight: bold;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  #voice-btn {
+    padding: 1.2 2;
+    background-color: transparent;
+    border-color: #00c8f0;
+    border-width: 0.08;
+    border-radius: 1;
+    color: #00c8f0;
+    font-size: 2.2;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .wp-list {
+    width: 100%;
+    margin-top: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5;
+  }
+
+  .wp-item {
+    padding: 0.8 1;
+    border-radius: 0.8;
+    background-color: rgba(0, 10, 30, 0.88);
+    border-width: 0 0 0 0.15;
+    border-color: #666666;
+  }
+
+  .wp-label {
+    font-size: 1.8;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .wp-note {
+    font-size: 1.4;
+    color: #888888;
+  }
+</style>
+<div class="hud-container">
+  <div class="title-row">
+    <span class="title">S C O U T</span>
+    <span id="threat-badge" class="threat-badge">THREAT: UNKNOWN</span>
+  </div>
+  <span id="status-text" class="status-text">Initializing...</span>
+
+  <span class="section-label">SCOUT NARRATION</span>
+  <span id="narration-text" class="narration-text">Awaiting mission brief...</span>
+
+  <span class="section-label">MISSION BRIEF</span>
+  <input id="mission-input" class="mission-input" value="scout for entry points and defensive positions" />
+  <div class="btn-row">
+    <button id="scout-btn">SCOUT</button>
+    <button id="voice-btn">MIC</button>
+  </div>
+
+  <span class="section-label">WAYPOINTS</span>
+  <div id="wp-list" class="wp-list">
+    <span class="wp-note">No waypoints yet</span>
+  </div>
+</div>

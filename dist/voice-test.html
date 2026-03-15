@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scout Voice Loop Test</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #00ff88; padding: 20px; min-height: 100vh; }
+    h1 { font-size: 1.5rem; margin-bottom: 10px; }
+    .status { font-size: 2rem; margin: 20px 0; padding: 20px; border: 2px solid #00ff88; border-radius: 8px; text-align: center; }
+    .status.idle { border-color: #444; color: #888; }
+    .status.listening { border-color: #ff4444; color: #ff4444; animation: pulse 1s infinite; }
+    .status.processing { border-color: #ffaa00; color: #ffaa00; }
+    .status.speaking { border-color: #00ff88; color: #00ff88; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    button { background: #00ff88; color: #0a0a0a; border: none; padding: 15px 30px; font-size: 1.2rem; font-family: inherit; cursor: pointer; border-radius: 4px; margin: 5px; }
+    button:hover { background: #00cc66; }
+    button:disabled { background: #333; color: #666; cursor: not-allowed; }
+    .log { background: #111; border: 1px solid #333; padding: 15px; margin-top: 15px; max-height: 300px; overflow-y: auto; font-size: 0.85rem; border-radius: 4px; }
+    .log-entry { margin: 3px 0; }
+    .log-entry.error { color: #ff4444; }
+    .log-entry.info { color: #00ff88; }
+    .log-entry.warn { color: #ffaa00; }
+    .transcript { color: #fff; font-size: 1.1rem; margin: 10px 0; }
+    .narration { color: #aaf; font-style: italic; margin: 10px 0; }
+    .waypoints { margin: 10px 0; }
+    .wp { background: #1a1a2a; padding: 8px; margin: 4px 0; border-left: 3px solid #00ff88; border-radius: 2px; }
+    .wp.high { border-color: #ff4444; }
+    .wp.medium { border-color: #ffaa00; }
+    .wp.low { border-color: #00ff88; }
+  </style>
+</head>
+<body>
+  <h1>// SCOUT VOICE LOOP TEST</h1>
+
+  <div class="status idle" id="status">IDLE — Press "Listen" or say wake word</div>
+
+  <div>
+    <button id="btn-listen" onclick="voiceLoop.listen()">🎤 Listen</button>
+    <button id="btn-stop" onclick="voiceLoop.stop(); addLog('Stopped', 'warn')">⏹ Stop</button>
+    <button onclick="voiceLoop.start(); addLog('Voice loop started', 'info')">▶ Start Loop</button>
+  </div>
+
+  <div id="transcript" class="transcript"></div>
+  <div id="narration" class="narration"></div>
+  <div id="waypoints" class="waypoints"></div>
+
+  <div class="log" id="log"></div>
+
+  <script src="/js/voice-loop.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const transcriptEl = document.getElementById('transcript');
+    const narrationEl = document.getElementById('narration');
+    const waypointsEl = document.getElementById('waypoints');
+
+    function addLog(msg, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + type;
+      entry.textContent = new Date().toLocaleTimeString() + ' — ' + msg;
+      logEl.prepend(entry);
+    }
+
+    const STATE_LABELS = {
+      idle: 'IDLE — Press "Listen" or say wake word',
+      listening: '🔴 LISTENING — Speak your mission...',
+      processing: '⏳ PROCESSING — Scout is thinking...',
+      speaking: '🔊 SPEAKING — Scout is responding...',
+    };
+
+    // Demo world description for testing
+    const DEMO_WORLD = `Abandoned space station interior. Dark corridors, exposed pipes, emergency lighting. Large central hub with four branching corridors heading north, south, east, west. Debris scattered across floor. Structural damage visible on eastern wall.`;
+
+    const voiceLoop = new VoiceLoop({
+      serverUrl: window.location.origin,
+      worldDescription: DEMO_WORLD,
+      // picovoiceAccessKey: 'YOUR_KEY_HERE', // Uncomment and add key for wake word
+      onStateChange: (state) => {
+        statusEl.textContent = STATE_LABELS[state] || state;
+        statusEl.className = 'status ' + state;
+        addLog('State: ' + state);
+      },
+      onTranscript: (text) => {
+        transcriptEl.textContent = '📝 You said: "' + text + '"';
+        addLog('Transcript: ' + text);
+      },
+      onResponse: (data) => {
+        narrationEl.textContent = '🛰️ ' + data.narration;
+        addLog('Scout response received — ' + data.waypoints.length + ' waypoints, threat: ' + data.threat_level);
+
+        waypointsEl.innerHTML = data.waypoints.map(wp =>
+          `<div class="wp ${wp.priority}">
+            <strong>${wp.label}</strong> [${wp.priority}] (${wp.x}, ${wp.z})
+            <br>${wp.note}
+          </div>`
+        ).join('');
+      },
+      onError: (err) => {
+        addLog(err, 'error');
+      },
+    });
+
+    // Auto-start
+    voiceLoop.start();
+    addLog('Voice loop initialized — world: Space Station', 'info');
+
+    // Load voices for browser TTS
+    if (window.speechSynthesis) {
+      speechSynthesis.getVoices();
+      speechSynthesis.onvoiceschanged = () => {
+        const voices = speechSynthesis.getVoices();
+        addLog('Browser TTS ready — ' + voices.length + ' voices available');
+      };
+    }
+  </script>
+</body>
+</html>
